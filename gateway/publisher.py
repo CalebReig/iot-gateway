@@ -56,6 +56,8 @@ def main():
         publish_one(client, "humidity_pct", humidity)
         publish_one(client, "pressure_mbar", pressure_mbar)
         publish_one(client, "cpu_temp_c", read_cpu_temp_c())
+        
+        print(f"T:{temp_c}; H:{humidity}; P:{pressure_mbar}; CPU_T:{read_cpu_temp_c};")
 
         time.sleep(PUBLISH_INTERVAL_SEC)
 
