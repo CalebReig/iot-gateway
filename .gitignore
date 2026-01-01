@@ -10,6 +10,7 @@ __pycache__/
 *.crt
 *.pem
 mosquitto/passwd
+data/
 
 # OS junk
 .DS_Store
