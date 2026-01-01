@@ -13,3 +13,6 @@ mosquitto/passwd
 
 # OS junk
 .DS_Store
+
+# IDE conf
+*.geany
