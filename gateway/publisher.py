@@ -45,17 +45,31 @@ def main():
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     client.connect(BROKER_HOST, BROKER_PORT, keepalive=60)
     client.loop_start()
+    
+    prev_temp_c = 0.0
+    prev_humidity = 0.0
+    prev_pressure_mbar = 0.0
+    prev_cpu_temp_c = 0.0
 
     while True:
         # Sense HAT sensors
-        temp_c = round(sense.get_temperature(), 2)
-        humidity = round(sense.get_humidity(), 2)
-        pressure_mbar = round(sense.get_pressure(), 2)
+        temp_c = round(sense.get_temperature(), 1)
+        humidity = round(sense.get_humidity(), 1)
+        pressure_mbar = round(sense.get_pressure(), 1)
+        cpu_temp_c = read_cpu_temp_c()
 
-        publish_one(client, "temperature_c", temp_c)
-        publish_one(client, "humidity_pct", humidity)
-        publish_one(client, "pressure_mbar", pressure_mbar)
-        publish_one(client, "cpu_temp_c", read_cpu_temp_c())
+		if temp_c != prev_temp_c:
+			publish_one(client, "temperature_c", temp_c)
+			prev_temp_c = temp_c
+		if humidy != prev_humidity:
+			publish_one(client, "humidity_pct", humidity)
+			prev_humidity = humidity
+		if pressure_mbar != prev_pressure_mbar:
+			publish_one(client, "pressure_mbar", pressure_mbar)
+			prev_pressure_mbar = pressure_mbar
+		if cpu_temp_c != prev_cpu_temp_c:
+			publish_one(client, "cpu_temp_c", cpu_temp_c)
+			prev_cpu_temp_c = cpu_temp_c
         
         print(f"T:{temp_c}; H:{humidity}; P:{pressure_mbar}; CPU_T:{read_cpu_temp_c()};")
 
