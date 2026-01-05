@@ -13,7 +13,7 @@ def main():
 			token=os.environ["INFLUX_TOKEN"],
 			bucket=os.environ["INFLUX_BUCKET"]
 		),
-		enable_db_writes=ENABLE_DB
+		enable_db_writes=ENABLE_DB,
 		mqqt_host=os.environ["MQTT_HOST"]
 	).start()
 
