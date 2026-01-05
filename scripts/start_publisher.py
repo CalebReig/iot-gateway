@@ -4,7 +4,7 @@ from sense_hat import SenseHat
 
 from gateway.constants import GATEWAY_NAME, PUBLISH_INTERVAL_SEC
 from gateway.publisher import Publisher
-from gateway.utils import TemperatureSensor, HumiditySensor, PressureSensor, CPUSensor
+from gateway.utils.sensors import TemperatureSensor, HumiditySensor, PressureSensor, CPUSensor
 
 
 def main():

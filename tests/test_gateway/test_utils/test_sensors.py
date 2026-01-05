@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from gateway.utils import (
+from gateway.utils.sensors import (
     Sensor,
     TemperatureSensor,
     HumiditySensor,

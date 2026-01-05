@@ -3,7 +3,8 @@ import json
 import paho.mqtt.client as mqtt
 
 from gateway.constants import BROKER_HOST, BROKER_PORT, BASE_TOPIC
-from gateway.utils import Util, Sensor
+from gateway.utils import DateUtil
+from gateway.utils.sensors import Sensor
 
 
 class Publisher:
@@ -25,7 +26,7 @@ class Publisher:
         return sensor_readings
 
     def publish_sensor_data(self):
-        now_utc = Util.now_iso()
+        now_utc = DateUtil.now_iso()
         sensor_readings = self._read_sensors()
         for sensor_name, sensor_val in sensor_readings.items():
             topic = f"{BASE_TOPIC}/{sensor_name}"

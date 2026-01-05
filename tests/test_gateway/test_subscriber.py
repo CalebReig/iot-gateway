@@ -6,37 +6,53 @@ from gateway.subscriber import Subscriber
 
 class TestSubscriber(unittest.TestCase):
     @patch("gateway.subscriber.mqtt.Client")
-    @patch("gateway.subscriber.Subscriber._get_db")
-    def test_init_wires_mqtt_and_connects(self, mock_get_db, mock_mqtt_client_cls):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_get_db.return_value = mock_conn
-
+    def test_init_wires_mqtt_and_connects(self, mock_mqtt_client_cls):
+        mock_db = MagicMock()
         mock_client = MagicMock()
         mock_mqtt_client_cls.return_value = mock_client
 
-        sub = Subscriber(enable_db_writes=True, db_path=":memory:")
+        sub = Subscriber(db=mock_db, enable_db_writes=True)
 
-        mock_get_db.assert_called_once()
-        mock_conn.cursor.assert_called_once()
+        mock_mqtt_client_cls.assert_called_once()
+        args, kwargs = mock_mqtt_client_cls.call_args
+        self.assertEqual(len(args), 1)
+
+        self.assertIsNotNone(args[0])
 
         self.assertEqual(mock_client.on_connect, sub._on_connect)
         self.assertEqual(mock_client.on_message, sub._on_message)
+
         mock_client.connect.assert_called_once()
+        c_args, c_kwargs = mock_client.connect.call_args
+        self.assertEqual(c_kwargs.get("keepalive"), 60)
+
         mock_client.loop_forever.assert_not_called()
 
     @patch("gateway.subscriber.mqtt.Client")
-    @patch("gateway.subscriber.Subscriber._get_db")
-    def test_start_calls_loop_forever(self, mock_get_db, mock_mqtt_client_cls):
-        mock_get_db.return_value = MagicMock()
+    def test_start_calls_loop_forever_and_closes_db(self, mock_mqtt_client_cls):
+        mock_db = MagicMock()
         mock_client = MagicMock()
         mock_mqtt_client_cls.return_value = mock_client
 
-        sub = Subscriber(enable_db_writes=True, db_path=":memory:")
+        sub = Subscriber(db=mock_db, enable_db_writes=True)
         sub.start()
 
         mock_client.loop_forever.assert_called_once()
+        mock_db.close.assert_called_once()
+
+    @patch("gateway.subscriber.mqtt.Client")
+    def test_start_closes_db_even_if_loop_forever_raises(self, mock_mqtt_client_cls):
+        mock_db = MagicMock()
+        mock_client = MagicMock()
+        mock_client.loop_forever.side_effect = RuntimeError("boom")
+        mock_mqtt_client_cls.return_value = mock_client
+
+        sub = Subscriber(db=mock_db, enable_db_writes=True)
+
+        with self.assertRaises(RuntimeError):
+            sub.start()
+
+        mock_db.close.assert_called_once()
 
     def test_on_connect_subscribes(self):
         sub = Subscriber.__new__(Subscriber)
@@ -47,13 +63,15 @@ class TestSubscriber(unittest.TestCase):
 
         mock_client.subscribe.assert_called_once_with("sensors/#")
 
-    @patch("gateway.subscriber.Util.now_iso", return_value="2026-01-02T12:34:56Z")
-    @patch("gateway.subscriber.time.strftime", return_value="2026-01-02 04:34:56")
-    def test_on_message_db_write_happy_path(self, mock_strftime, mock_now_iso):
+    @patch("gateway.subscriber.DateUtil.now_iso", return_value="2026-01-02T12:34:56Z")
+    @patch("gateway.subscriber.Telemetry.from_payload")
+    def test_on_message_db_write_happy_path(self, mock_from_payload, mock_now_iso):
         sub = Subscriber.__new__(Subscriber)
         sub.enable_db_writes = True
-        sub.conn = MagicMock()
-        sub.cur = MagicMock()
+        sub.db = MagicMock()
+
+        telemetry_obj = MagicMock()
+        mock_from_payload.return_value = telemetry_obj
 
         msg = MagicMock()
         msg.topic = "sensors/gw-1/temperature_c"
@@ -61,69 +79,82 @@ class TestSubscriber(unittest.TestCase):
 
         sub._on_message(None, None, msg)
 
-        sub.cur.execute.assert_called_once()
-        args, _ = sub.cur.execute.call_args
+        mock_from_payload.assert_called_once()
+        sub.db.write_telemetry.assert_called_once_with(telemetry_obj)
 
-        sql = args[0]
-        params = args[1]
-
-        self.assertIn("INSERT INTO telemetry", sql)
-        self.assertEqual(params[0], "2026-01-02T12:34:56Z")
-        self.assertEqual(params[1], "sensors/gw-1/temperature_c")
-        self.assertEqual(params[2], "2026-01-02T12:34:00Z")
-        self.assertEqual(params[3], "gw-1")
-        self.assertEqual(params[4], "temperature_c")
-        self.assertEqual(params[5], 22.5)
-        self.assertIsNone(params[6])
-        self.assertEqual(params[7], msg.payload.decode(errors="replace"))
-
-        sub.conn.commit.assert_called_once()
-
-    @patch("gateway.subscriber.Util.now_iso", return_value="2026-01-02T12:34:56Z")
-    def test_on_message_db_write_disabled_does_not_write(self, mock_now_iso):
+    @patch("gateway.subscriber.DateUtil.now_iso", return_value="2026-01-02T12:34:56Z")
+    @patch("gateway.subscriber.Telemetry.from_payload")
+    def test_on_message_db_write_disabled_does_not_write(
+        self, mock_from_payload, mock_now_iso
+    ):
         sub = Subscriber.__new__(Subscriber)
         sub.enable_db_writes = False
-        sub.conn = MagicMock()
-        sub.cur = MagicMock()
+        sub.db = MagicMock()
+
+        telemetry_obj = MagicMock()
+        mock_from_payload.return_value = telemetry_obj
 
         msg = MagicMock()
         msg.topic = "sensors/gw-1/temperature_c"
-        msg.payload = b'{"device":"gw-1","sensor":"temperature_c","value":22.5}'
+        msg.payload = b'{"ts":"2026-01-02T12:34:00Z","device":"gw-1","sensor":"temperature_c","value":22.5}'
 
         sub._on_message(None, None, msg)
 
-        sub.cur.execute.assert_not_called()
-        sub.conn.commit.assert_not_called()
+        mock_from_payload.assert_called_once()
+        sub.db.write_telemetry.assert_not_called()
 
-    def test_parse_payload_valid_json_dict(self):
+    @patch("gateway.subscriber.DateUtil.now_iso", return_value="2026-01-02T12:34:56Z")
+    def test_on_message_invalid_json_returns_and_does_not_write(self, mock_now_iso):
         sub = Subscriber.__new__(Subscriber)
-        data = sub._parse_payload('{"a":1}')
-        self.assertEqual(data, {"a": 1})
+        sub.enable_db_writes = True
+        sub.db = MagicMock()
 
-    def test_parse_payload_valid_json_non_dict(self):
-        sub = Subscriber.__new__(Subscriber)
-        data = sub._parse_payload('"hello"')
-        self.assertEqual(data, {"value": "hello"})
+        msg = MagicMock()
+        msg.topic = "sensors/gw-1/temperature_c"
+        msg.payload = b"not-json"
 
-    def test_parse_payload_invalid_json(self):
-        sub = Subscriber.__new__(Subscriber)
-        data = sub._parse_payload("not-json")
-        self.assertEqual(data, {"value": "not-json"})
+        sub._on_message(None, None, msg)
 
-    def test_extract_value_fields_numeric(self):
-        sub = Subscriber.__new__(Subscriber)
-        value_real, value_text = sub._extract_value_fields({"value": 12.3})
-        self.assertEqual(value_real, 12.3)
-        self.assertIsNone(value_text)
+        sub.db.write_telemetry.assert_not_called()
 
-    def test_extract_value_fields_numeric_string(self):
+    @patch("gateway.subscriber.DateUtil.now_iso", return_value="2026-01-02T12:34:56Z")
+    @patch(
+        "gateway.subscriber.Telemetry.from_payload",
+        side_effect=ValueError("bad payload"),
+    )
+    def test_on_message_bad_payload_returns_and_does_not_write(
+        self, mock_from_payload, mock_now_iso
+    ):
         sub = Subscriber.__new__(Subscriber)
-        value_real, value_text = sub._extract_value_fields({"value": "12.3"})
-        self.assertEqual(value_real, 12.3)
-        self.assertIsNone(value_text)
+        sub.enable_db_writes = True
+        sub.db = MagicMock()
 
-    def test_extract_value_fields_non_numeric_string(self):
+        msg = MagicMock()
+        msg.topic = "sensors/gw-1/temperature_c"
+        msg.payload = b'{"device":"gw-1","sensor":"temperature_c","value":"nope"}'
+
+        sub._on_message(None, None, msg)
+
+        sub.db.write_telemetry.assert_not_called()
+
+    @patch("gateway.subscriber.DateUtil.now_iso", return_value="2026-01-02T12:34:56Z")
+    @patch("gateway.subscriber.Telemetry.from_payload")
+    def test_on_message_db_write_failure_is_caught(
+        self, mock_from_payload, mock_now_iso
+    ):
         sub = Subscriber.__new__(Subscriber)
-        value_real, value_text = sub._extract_value_fields({"value": "ok"})
-        self.assertIsNone(value_real)
-        self.assertEqual(value_text, "ok")
+        sub.enable_db_writes = True
+        sub.db = MagicMock()
+
+        telemetry_obj = MagicMock()
+        mock_from_payload.return_value = telemetry_obj
+        sub.db.write_telemetry.side_effect = RuntimeError("db down")
+
+        msg = MagicMock()
+        msg.topic = "sensors/gw-1/temperature_c"
+        msg.payload = b'{"ts":"2026-01-02T12:34:00Z","device":"gw-1","sensor":"temperature_c","value":22.5}'
+
+        # should not raise
+        sub._on_message(None, None, msg)
+
+        sub.db.write_telemetry.assert_called_once_with(telemetry_obj)

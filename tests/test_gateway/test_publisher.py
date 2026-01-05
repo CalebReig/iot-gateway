@@ -6,7 +6,7 @@ from gateway.publisher import Publisher
 
 
 class TestPublisher(unittest.TestCase):
-    @patch("gateway.publisher.Util.now_iso", return_value="2026-01-02T12:34:56Z")
+    @patch("gateway.publisher.DateUtil.now_iso", return_value="2026-01-02T12:34:56Z")
     @patch("gateway.publisher.mqtt.Client")
     def test_publish_sensor_data_publishes_only_new_values(
         self, mock_mqtt_client_cls, mock_now_iso
@@ -76,7 +76,7 @@ class TestPublisher(unittest.TestCase):
         temp.is_current_new_value.assert_called_once()
         hum.is_current_new_value.assert_called_once()
 
-    @patch("gateway.publisher.Util.now_iso", return_value="2026-01-02T12:34:56Z")
+    @patch("gateway.publisher.DateUtil.now_iso", return_value="2026-01-02T12:34:56Z")
     @patch("gateway.publisher.mqtt.Client")
     def test_publish_sensor_data_publishes_nothing_if_no_new_values(
         self, mock_mqtt_client_cls, mock_now_iso
@@ -103,7 +103,7 @@ class TestPublisher(unittest.TestCase):
         s1.read.assert_called_once()
         s2.read.assert_called_once()
 
-    @patch("gateway.publisher.Util.now_iso", return_value="2026-01-02T12:34:56Z")
+    @patch("gateway.publisher.DateUtil.now_iso", return_value="2026-01-02T12:34:56Z")
     @patch("gateway.publisher.mqtt.Client")
     def test_publish_sensor_data_publishes_multiple_new_values(
         self, mock_mqtt_client_cls, mock_now_iso
